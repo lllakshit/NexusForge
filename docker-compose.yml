@@ -342,6 +342,37 @@ services:
     ports:
       - "4006:4006"
 
+  ai-core:
+    build:
+      context: .
+      dockerfile: ai-core/Dockerfile
+    container_name: nexusforge-ai-core
+    restart: unless-stopped
+    environment:
+      PORT: 4011
+      AI_CORE_CONFIG: /app/config/config.yaml
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: qwen2.5
+      OLLAMA_PATH: F:\ollama
+      CLOUD_PROVIDER: ${CLOUD_PROVIDER:-groq}
+      CLOUD_MODEL: ${CLOUD_MODEL:-llama-3.3-70b-versatile}
+      CLOUD_API_BASE: ${CLOUD_API_BASE:-https://api.groq.com/openai/v1}
+      CLOUD_API_KEY: ${CLOUD_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/ai-core
+      MTLS_MODE: disabled
+    volumes:
+      - ai_core_data:/app/data
+    depends_on:
+      - nats
+      - otel-collector
+    ports:
+      - "4011:4011"
+
   gateway:
     build:
       context: .
@@ -357,6 +388,7 @@ services:
       FILE_SERVICE_URL: http://file-service:4004
       MCP_SERVICE_URL: http://mcp-server:4005
       INCIDENT_SERVICE_URL: http://incident-service:4006
+      AI_CORE_URL: http://ai-core:4011
       OPA_URL: http://opa:8181
       FEATURE_FLAG_URL: http://feature-flags:4010
       NATS_URL: nats://nats:4222
@@ -371,6 +403,7 @@ services:
       - file-service
       - mcp-server
       - incident-service
+      - ai-core
       - feature-flags
       - opa
       - nats
@@ -415,3 +448,4 @@ volumes:
   nats_data:
   grafana_data:
   files_data:
+  ai_core_data:

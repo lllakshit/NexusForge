@@ -1,0 +1,48 @@
+service:
+  name: ai-core
+  host: 0.0.0.0
+  port: 4011
+
+local_model:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: qwen2.5
+  ollama_path: F:\ollama
+  timeout_seconds: 180
+
+cloud_model:
+  provider: groq
+  api_base: https://api.groq.com/openai/v1
+  model: llama-3.3-70b-versatile
+  timeout_seconds: 180
+
+routing_thresholds:
+  local_token_limit: 900
+  cloud_complexity_threshold: 5.8
+  mixed_complexity_threshold: 4.2
+  high_reasoning_depth: 7
+
+agent_limits:
+  max_local_agents: 1
+  max_parallel_cloud_agents: 4
+  queue_maxsize: 200
+  retries: 2
+  retry_backoff_seconds: 1.5
+  max_context_chars: 5000
+
+memory:
+  sqlite_path: ./data/ai_core.db
+  chroma_path: ./data/chroma
+  collection_name: ai_core_memory
+  embedding_dimensions: 384
+  retrieval_limit: 5
+
+events:
+  enabled: true
+  nats_url: nats://nats:4222
+  subject_prefix: nexusforge
+  subjects:
+    - task.created
+    - repo.updated
+    - job.requested
+
