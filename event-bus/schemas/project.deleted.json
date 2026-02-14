@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "project.deleted",
+  "type": "object",
+  "required": ["projectId", "deletedBy"],
+  "properties": {
+    "projectId": { "type": "string" },
+    "deletedBy": { "type": "string" },
+    "deletedAt": { "type": "string", "format": "date-time" }
+  }
+}

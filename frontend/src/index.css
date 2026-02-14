@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top left, #d9f4ef 0%, #f8fafc 45%, #ffffff 100%);
+  color: #102a43;
+}
+
+* {
+  box-sizing: border-box;
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "project.created",
+  "type": "object",
+  "required": ["projectId", "name", "ownerId"],
+  "properties": {
+    "projectId": { "type": "string" },
+    "name": { "type": "string" },
+    "ownerId": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

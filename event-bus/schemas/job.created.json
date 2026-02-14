@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "job.created",
+  "type": "object",
+  "required": ["jobId", "projectId", "status"],
+  "properties": {
+    "jobId": { "type": "string" },
+    "projectId": { "type": "string" },
+    "status": { "type": "string", "enum": ["queued", "running", "completed", "failed"] },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

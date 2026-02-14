@@ -1,0 +1,33 @@
+{
+  "id": null,
+  "uid": "nexusforge-overview",
+  "title": "NexusForge Platform Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Gateway HTTP Requests",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_duration_count{service_name=\"gateway\"}[1m]))",
+          "legendFormat": "req/s"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Job Completions",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_duration_count{service_name=\"job-service\"}[1m]))",
+          "legendFormat": "job endpoints req/s"
+        }
+      ]
+    }
+  ]
+}

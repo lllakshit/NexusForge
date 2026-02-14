@@ -1,0 +1,417 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexusforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespass
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  mongo:
+    image: mongo:7
+    container_name: nexusforge-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - ./database/mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexusforge-redis
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./database/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: nexusforge-nats
+    restart: unless-stopped
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
+
+  temporal:
+    image: temporalio/auto-setup:1.25.1
+    container_name: nexusforge-temporal
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporalpass
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"
+
+  temporal-ui:
+    image: temporalio/ui:2.30.3
+    container_name: nexusforge-temporal-ui
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_UI_PORT: 8080
+    ports:
+      - "8233:8080"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: nexusforge-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+      - "14250:14250"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.118.0
+    container_name: nexusforge-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "9464:9464"
+    depends_on:
+      - jaeger
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: nexusforge-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: nexusforge-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+  opa:
+    image: openpolicyagent/opa:0.70.0
+    container_name: nexusforge-opa
+    restart: unless-stopped
+    command: ["run", "--server", "--set=decision_logs.console=true", "/policy"]
+    volumes:
+      - ./policy/bundles:/policy:ro
+    ports:
+      - "8181:8181"
+
+  feature-flags:
+    build:
+      context: .
+      dockerfile: feature-flags/Dockerfile
+    container_name: nexusforge-feature-flags
+    restart: unless-stopped
+    environment:
+      PORT: 4010
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/feature-flags
+      MTLS_MODE: disabled
+    depends_on:
+      - nats
+      - otel-collector
+    ports:
+      - "4010:4010"
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
+    container_name: nexusforge-auth-service
+    restart: unless-stopped
+    environment:
+      PORT: 4001
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: nexusforge
+      POSTGRES_USER: nexusforge
+      POSTGRES_PASSWORD: nexusforgepass
+      JWT_SECRET: nexusforge-dev-jwt-secret-2026
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/auth-service
+      MTLS_MODE: disabled
+    depends_on:
+      - postgres
+      - nats
+      - otel-collector
+    ports:
+      - "4001:4001"
+
+  project-service:
+    build:
+      context: .
+      dockerfile: project-service/Dockerfile
+    container_name: nexusforge-project-service
+    restart: unless-stopped
+    environment:
+      PORT: 4002
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: nexusforge
+      POSTGRES_USER: nexusforge
+      POSTGRES_PASSWORD: nexusforgepass
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/project-service
+      MTLS_MODE: disabled
+    depends_on:
+      - postgres
+      - nats
+      - otel-collector
+    ports:
+      - "4002:4002"
+
+  worker-python:
+    build:
+      context: .
+      dockerfile: worker-python/Dockerfile
+    container_name: nexusforge-worker-python
+    restart: unless-stopped
+    environment:
+      NATS_URL: nats://nats:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/worker-python
+      MTLS_MODE: disabled
+    depends_on:
+      - nats
+      - otel-collector
+    ports:
+      - "5000:5000"
+
+  job-service:
+    build:
+      context: .
+      dockerfile: job-service/Dockerfile
+    container_name: nexusforge-job-service
+    restart: unless-stopped
+    environment:
+      PORT: 4003
+      MONGO_URI: mongodb://mongo:27017/nexusforge
+      MONGO_DB: nexusforge
+      REDIS_URL: redis://redis:6379
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: nexusforge-task-queue
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/job-service
+      MTLS_MODE: disabled
+    depends_on:
+      - mongo
+      - redis
+      - temporal
+      - nats
+      - otel-collector
+    ports:
+      - "4003:4003"
+
+  file-service:
+    build:
+      context: .
+      dockerfile: file-service/Dockerfile
+    container_name: nexusforge-file-service
+    restart: unless-stopped
+    environment:
+      PORT: 4004
+      FILE_STORAGE_PATH: /data/files
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/file-service
+      MTLS_MODE: disabled
+    volumes:
+      - files_data:/data/files
+    depends_on:
+      - nats
+      - otel-collector
+    ports:
+      - "4004:4004"
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp-server/Dockerfile
+    container_name: nexusforge-mcp-server
+    restart: unless-stopped
+    environment:
+      PORT: 4005
+      PROJECT_SERVICE_URL: http://project-service:4002
+      JOB_SERVICE_URL: http://job-service:4003
+      FILE_SERVICE_URL: http://file-service:4004
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/mcp-server
+      MTLS_MODE: disabled
+    depends_on:
+      - project-service
+      - job-service
+      - file-service
+      - nats
+      - otel-collector
+    ports:
+      - "4005:4005"
+
+  temporal-worker:
+    build:
+      context: .
+      dockerfile: temporal/worker/Dockerfile
+    container_name: nexusforge-temporal-worker
+    restart: unless-stopped
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_TASK_QUEUE: nexusforge-task-queue
+      JOB_SERVICE_URL: http://job-service:4003
+      WORKER_PYTHON_URL: http://worker-python:5000
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/temporal-worker
+      MTLS_MODE: disabled
+    depends_on:
+      - temporal
+      - job-service
+      - worker-python
+      - nats
+      - otel-collector
+
+  incident-service:
+    build:
+      context: .
+      dockerfile: incident-service/Dockerfile
+    container_name: nexusforge-incident-service
+    restart: unless-stopped
+    environment:
+      PORT: 4006
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: nexusforge-task-queue
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/incident-service
+      MTLS_MODE: disabled
+    depends_on:
+      - temporal
+      - nats
+      - otel-collector
+    ports:
+      - "4006:4006"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: nexusforge-gateway
+    restart: unless-stopped
+    environment:
+      GATEWAY_PORT: 4000
+      JWT_SECRET: nexusforge-dev-jwt-secret-2026
+      AUTH_SERVICE_URL: http://auth-service:4001
+      PROJECT_SERVICE_URL: http://project-service:4002
+      JOB_SERVICE_URL: http://job-service:4003
+      FILE_SERVICE_URL: http://file-service:4004
+      MCP_SERVICE_URL: http://mcp-server:4005
+      INCIDENT_SERVICE_URL: http://incident-service:4006
+      OPA_URL: http://opa:8181
+      FEATURE_FLAG_URL: http://feature-flags:4010
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/gateway
+      MTLS_MODE: disabled
+    depends_on:
+      - auth-service
+      - project-service
+      - job-service
+      - file-service
+      - mcp-server
+      - incident-service
+      - feature-flags
+      - opa
+      - nats
+      - otel-collector
+    ports:
+      - "4000:4000"
+
+  backstage:
+    build:
+      context: .
+      dockerfile: backstage/Dockerfile
+    container_name: nexusforge-backstage
+    restart: unless-stopped
+    environment:
+      PORT: 7007
+      NATS_URL: nats://nats:4222
+      NATS_STREAM: NEXUSFORGE_EVENTS
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SERVICE_SPIFFE_ID: spiffe://nexusforge.local/backstage
+      MTLS_MODE: disabled
+    depends_on:
+      - nats
+      - otel-collector
+    ports:
+      - "7007:7007"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: nexusforge-frontend
+    restart: unless-stopped
+    depends_on:
+      - gateway
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
+  nats_data:
+  grafana_data:
+  files_data:

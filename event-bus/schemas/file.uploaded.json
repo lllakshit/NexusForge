@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "file.uploaded",
+  "type": "object",
+  "required": ["fileId", "filename", "uploadedBy"],
+  "properties": {
+    "fileId": { "type": "string" },
+    "filename": { "type": "string" },
+    "uploadedBy": { "type": "string" },
+    "uploadedAt": { "type": "string", "format": "date-time" }
+  }
+}

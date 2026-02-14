@@ -1,0 +1,61 @@
+name: NexusForge CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build-lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install shared packages
+        run: |
+          cd event-bus/event-sdk && npm ci
+          cd ../../observability/telemetry-sdk && npm ci
+
+      - name: Build shared packages
+        run: |
+          cd event-bus/event-sdk && npm run lint && npm run build
+          cd ../../observability/telemetry-sdk && npm run lint && npm run build
+
+      - name: Build Node services
+        run: |
+          for service in gateway auth-service project-service job-service file-service mcp-server feature-flags incident-service temporal/worker backstage frontend; do
+            cd "$service"
+            npm ci
+            npm run lint
+            npm run build
+            cd -
+          done
+
+      - name: Validate Python worker
+        run: |
+          cd worker-python
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m py_compile src/app.py
+
+      - name: Docker Compose config check
+        run: docker compose config
+
+      - name: Docker build
+        run: docker compose build --parallel
+
+      - name: Simulated cosign signing
+        run: |
+          echo "Simulating image signing with cosign"
+          docker images --format "{{.Repository}}:{{.Tag}}" | grep nexusforge || true
