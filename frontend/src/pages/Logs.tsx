@@ -29,8 +29,8 @@ export function Logs() {
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Logs</h2>
-        <button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onClick={() => void loadLogs()}>
+        <h2 className="text-2xl font-semibold text-white">Logs</h2>
+        <button type="button" className="rounded-lg border border-nf-line px-3 py-2 text-sm text-white" onClick={() => void loadLogs()}>
           Refresh
         </button>
       </div>
@@ -38,7 +38,7 @@ export function Logs() {
 
       <div className="space-y-2">
         {logs.map((log) => (
-          <article key={log.id} className="rounded-lg border border-slate-200 p-3">
+          <article key={log.id} className="rounded-lg border border-nf-line bg-nf-panel p-3">
             <p className={`text-sm font-semibold ${log.level === "error" ? "text-rose-500" : "text-teal-500"}`}>{log.level.toUpperCase()}</p>
             <p className="text-sm">{log.message}</p>
             <p className="text-xs text-slate-500">{new Date(log.createdAt).toLocaleString()}</p>

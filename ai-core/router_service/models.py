@@ -62,6 +62,20 @@ class ExecuteRequest(AIBaseModel):
     correlation_id: str | None = None
 
 
+class ChatRequest(AIBaseModel):
+    prompt: str = Field(min_length=1)
+    system_prompt: str | None = None
+    temperature: float = Field(default=0.2, ge=0, le=2)
+
+
+class ChatResponse(AIBaseModel):
+    ok: bool = True
+    provider: str
+    model: str
+    route: str = "cloud"
+    output: str
+
+
 class AgentExecutionResult(AIBaseModel):
     step_id: str
     step_name: str

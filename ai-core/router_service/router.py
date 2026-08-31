@@ -38,11 +38,14 @@ class RouterEngine:
         route_mode = self._choose_route_mode(task, task_type, complexity_score, reasoning_depth)
         complexity_level = self._complexity_level(complexity_score)
 
-        local_signal = await self._analyze_route_with_local_model(task, task_type, reasoning_depth)
-        if local_signal:
-            suggested_mode = local_signal.get("recommendation")
-            if suggested_mode in {"local", "cloud", "mixed"}:
-                route_mode = suggested_mode
+        if self._cloud_only():
+            route_mode = "cloud"
+        else:
+            local_signal = await self._analyze_route_with_local_model(task, task_type, reasoning_depth)
+            if local_signal:
+                suggested_mode = local_signal.get("recommendation")
+                if suggested_mode in {"local", "cloud", "mixed"}:
+                    route_mode = suggested_mode
 
         steps = self._build_steps(task, task_type, route_mode, complexity_score)
         reasoning = self._build_reasoning(task_type, complexity_score, token_estimate, reasoning_depth, route_mode)
@@ -66,9 +69,12 @@ class RouterEngine:
         messages: Sequence[dict[str, str]] | None = None,
     ) -> str:
         payload = list(messages) if messages else [{"role": "user", "content": prompt or ""}]
-        if model_route == "cloud":
-            return str(await self.cloud_gateway.chat(messages=payload, stream=False))
-        return str(await self.local_gateway.chat(messages=payload, stream=False))
+        if model_route == "local" and not self._cloud_only():
+            return str(await self.local_gateway.chat(messages=payload, stream=False))
+        return str(await self.cloud_gateway.chat(messages=payload, stream=False))
+
+    def _cloud_only(self) -> bool:
+        return getattr(self.config.routing, "mode", "hybrid") == "cloud"
 
     async def _analyze_route_with_local_model(
         self,
@@ -141,6 +147,8 @@ class RouterEngine:
         return (token_ratio * 3.0) + (reasoning_depth * 0.55) + task_weight + multi_constraint_bonus
 
     def _choose_route_mode(self, task: str, task_type: TaskType, complexity_score: float, reasoning_depth: int) -> str:
+        if self._cloud_only():
+            return "cloud"
         if self._is_mixed_task(task):
             return "mixed"
 
@@ -204,12 +212,13 @@ class RouterEngine:
                 add_step(
                     "research", 1, "research_agent", "research", "cloud", True, "Collect architecture and design insights."
                 )
+            local_or_cloud = "cloud" if self._cloud_only() else "local"
             if task_type in {"code", "architecture", "general"}:
-                add_step("coding", 2, "coder_agent", "code", "local", False, "Build implementation deliverables.")
+                add_step("coding", 2, "coder_agent", "code", local_or_cloud, False, "Build implementation deliverables.")
             if task_type in {"infra", "architecture"}:
-                add_step("infrastructure", 2, "infra_agent", "infra", "local", False, "Define infra and deployment needs.")
+                add_step("infrastructure", 2, "infra_agent", "infra", local_or_cloud, False, "Define infra and deployment needs.")
             add_step("review", 3, "critic_agent", "review", "cloud", False, "Review quality, risk, and gaps.")
-            add_step("memory_update", 4, "memory_agent", "memory", "local", False, "Summarize and persist key outputs.")
+            add_step("memory_update", 4, "memory_agent", "memory", local_or_cloud, False, "Summarize and persist key outputs.")
             return steps
 
         primary_agent = self._primary_agent_for_type(task_type)
@@ -227,7 +236,15 @@ class RouterEngine:
         if route_mode == "cloud" and complexity_score >= self.thresholds.cloud_complexity_threshold:
             add_step("quality_review", 2, "critic_agent", "review", "cloud", False, "Review and harden the output.")
 
-        add_step("memory_update", 3, "memory_agent", "memory", "local", False, "Persist context and decisions.")
+        add_step(
+            "memory_update",
+            3,
+            "memory_agent",
+            "memory",
+            "cloud" if self._cloud_only() else "local",
+            False,
+            "Persist context and decisions.",
+        )
         return steps
 
     @staticmethod

@@ -52,3 +52,8 @@ allow if {
   startswith(input.path, "/mcp")
   input.user_id != ""
 }
+
+allow if {
+  startswith(input.path, "/ai")
+  input.user_id != ""
+}

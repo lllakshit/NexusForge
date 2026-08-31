@@ -7,7 +7,10 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from auth_service import router as auth_router
+from usage_stats import snapshot as usage_snapshot
 from agent_service.agents import AgentRegistry
 from agent_service.executor import AgentExecutor
 from config.loader import AppConfig, load_config
@@ -72,7 +75,15 @@ def create_app() -> FastAPI:
         description="Hybrid multi-agent AI orchestration service for NexusForge.",
         lifespan=lifespan,
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
+    app.include_router(auth_router)
     app.include_router(ai_router)
     app.include_router(memory_router)
 
@@ -85,7 +96,10 @@ def create_app() -> FastAPI:
             "local_model": container.config.local_model.model,
             "cloud_provider": container.config.cloud_model.provider,
             "cloud_model": container.config.cloud_model.model,
+            "cloud_configured": bool(container.config.cloud_model.api_key),
+            "route_mode": container.config.routing.mode,
             "queue_size": container.orchestrator.queue.qsize(),
+            "usage": usage_snapshot(),
         }
 
     @app.get("/agents")

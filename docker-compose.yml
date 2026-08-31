@@ -354,12 +354,15 @@ services:
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: qwen2.5
       OLLAMA_PATH: F:\ollama
-      CLOUD_PROVIDER: ${CLOUD_PROVIDER:-groq}
-      CLOUD_MODEL: ${CLOUD_MODEL:-llama-3.3-70b-versatile}
-      CLOUD_API_BASE: ${CLOUD_API_BASE:-https://api.groq.com/openai/v1}
+      CLOUD_PROVIDER: ${CLOUD_PROVIDER:-gemini}
+      CLOUD_MODEL: ${CLOUD_MODEL:-gemini-2.0-flash}
+      CLOUD_API_BASE: ${CLOUD_API_BASE:-https://generativelanguage.googleapis.com/v1beta/openai}
       CLOUD_API_KEY: ${CLOUD_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      AI_ROUTE_MODE: ${AI_ROUTE_MODE:-cloud}
+      AI_EVENTS_ENABLED: ${AI_EVENTS_ENABLED:-true}
       NATS_URL: nats://nats:4222
       NATS_STREAM: NEXUSFORGE_EVENTS
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318

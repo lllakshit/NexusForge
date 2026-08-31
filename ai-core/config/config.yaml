@@ -11,10 +11,13 @@ local_model:
   timeout_seconds: 180
 
 cloud_model:
-  provider: groq
-  api_base: https://api.groq.com/openai/v1
-  model: llama-3.3-70b-versatile
+  provider: gemini
+  api_base: https://generativelanguage.googleapis.com/v1beta/openai
+  model: gemini-2.0-flash
   timeout_seconds: 180
+
+routing:
+  mode: cloud
 
 routing_thresholds:
   local_token_limit: 900
@@ -38,7 +41,7 @@ memory:
   retrieval_limit: 5
 
 events:
-  enabled: true
+  enabled: false
   nats_url: nats://nats:4222
   subject_prefix: nexusforge
   subjects:

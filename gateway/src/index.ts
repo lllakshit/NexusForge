@@ -40,7 +40,8 @@ const serviceUrls = {
   job: process.env.JOB_SERVICE_URL ?? "http://job-service:4003",
   file: process.env.FILE_SERVICE_URL ?? "http://file-service:4004",
   mcp: process.env.MCP_SERVICE_URL ?? "http://mcp-server:4005",
-  incident: process.env.INCIDENT_SERVICE_URL ?? "http://incident-service:4006"
+  incident: process.env.INCIDENT_SERVICE_URL ?? "http://incident-service:4006",
+  ai: process.env.AI_CORE_URL ?? "http://ai-core:4011"
 };
 
 const eventBus = new EventBusClient({
@@ -163,7 +164,7 @@ const enforcePolicy = async (req: AuthenticatedRequest, res: Response, next: Nex
   }
 };
 
-const proxyRequest = (target: string) => {
+const proxyRequest = (target: string, stripPrefix = "") => {
   return async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const contentType = req.header("content-type") ?? "";
     const isMultipart = contentType.includes("multipart/form-data");
@@ -191,14 +192,14 @@ const proxyRequest = (target: string) => {
 
     try {
       const response = await axios.request({
-        url: `${target}${req.originalUrl}`,
+        url: `${target}${stripPrefix ? req.originalUrl.replace(new RegExp(`^${stripPrefix}`), "") || "/" : req.originalUrl}`,
         method: req.method as Method,
         params: req.query,
         headers,
         data: req.method === "GET" || req.method === "HEAD" ? undefined : isMultipart ? req : req.body,
         maxBodyLength: Infinity,
         validateStatus: () => true,
-        timeout: 20000
+        timeout: 120000
       });
 
       res.status(response.status).json(response.data);
@@ -234,6 +235,7 @@ app.use("/files", proxyRequest(serviceUrls.file));
 app.use("/logs", proxyRequest(serviceUrls.job));
 app.use("/mcp", proxyRequest(serviceUrls.mcp));
 app.use("/incidents", proxyRequest(serviceUrls.incident));
+app.use("/ai", proxyRequest(serviceUrls.ai, "/ai"));
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Route not found" });

@@ -8,6 +8,15 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+except Exception:
+    pass
+
 
 class ServiceSettings(BaseModel):
     name: str = "ai-core"
@@ -24,9 +33,9 @@ class LocalModelSettings(BaseModel):
 
 
 class CloudModelSettings(BaseModel):
-    provider: str = "groq"
-    api_base: str = "https://api.groq.com/openai/v1"
-    model: str = "llama-3.3-70b-versatile"
+    provider: str = "gemini"
+    api_base: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    model: str = "gemini-2.0-flash"
     api_key: str | None = None
     timeout_seconds: float = 180.0
 
@@ -62,6 +71,11 @@ class EventSettings(BaseModel):
     subjects: list[str] = Field(default_factory=lambda: ["task.created", "repo.updated", "job.requested"])
 
 
+class RoutingModeSettings(BaseModel):
+    # cloud = never call Ollama. hybrid = existing local/cloud/mixed router.
+    mode: str = "hybrid"
+
+
 class AppConfig(BaseModel):
     service: ServiceSettings = Field(default_factory=ServiceSettings)
     local_model: LocalModelSettings = Field(default_factory=LocalModelSettings)
@@ -70,6 +84,7 @@ class AppConfig(BaseModel):
     agent_limits: AgentLimits = Field(default_factory=AgentLimits)
     memory: MemorySettings = Field(default_factory=MemorySettings)
     events: EventSettings = Field(default_factory=EventSettings)
+    routing: RoutingModeSettings = Field(default_factory=RoutingModeSettings)
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -102,9 +117,17 @@ def _resolve_config_path(path: str | None) -> Path:
 
 def _cloud_defaults(provider: str) -> tuple[str, str]:
     normalized = provider.lower()
+    if normalized in {"gemini", "google"}:
+        return "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.0-flash"
+    if normalized in {"omniroute", "openrouter"}:
+        return "http://127.0.0.1:20128/v1", "auto"
+    if normalized == "openai":
+        return "https://api.openai.com/v1", "gpt-4.1-mini"
     if normalized == "deepseek":
         return "https://api.deepseek.com/v1", "deepseek-chat"
-    return "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"
+    if normalized == "groq":
+        return "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"
+    return "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.0-flash"
 
 
 def _apply_env_overrides(config: AppConfig) -> AppConfig:
@@ -129,11 +152,24 @@ def _apply_env_overrides(config: AppConfig) -> AppConfig:
     )
 
     api_key = os.getenv("CLOUD_API_KEY")
+    if not api_key and cloud_provider in {"gemini", "google"}:
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY")
     if not api_key and cloud_provider == "groq":
         api_key = os.getenv("GROQ_API_KEY")
     if not api_key and cloud_provider == "deepseek":
         api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key and cloud_provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key and cloud_provider in {"omniroute", "openrouter"}:
+        api_key = os.getenv("OMNIROUTE_API_KEY") or os.getenv("OPENROUTER_API_KEY") or "omniroute"
     cloud_model["api_key"] = api_key
+
+    routing = data.setdefault("routing", {})
+    routing["mode"] = os.getenv("AI_ROUTE_MODE", routing.get("mode", "hybrid")).lower()
+
+    events = data["events"]
+    if os.getenv("AI_EVENTS_ENABLED"):
+        events["enabled"] = os.getenv("AI_EVENTS_ENABLED", "true").lower() in {"1", "true", "yes"}
 
     service = data["service"]
     if os.getenv("PORT"):

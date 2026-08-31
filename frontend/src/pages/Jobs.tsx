@@ -13,7 +13,7 @@ export function Jobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [name, setName] = useState("");
   const [projectId, setProjectId] = useState("");
-  const [payloadText, setPayloadText] = useState('{"values":[1,2,3,4]}');
+  const [payloadText, setPayloadText] = useState("{}");
   const [status, setStatus] = useState("");
 
   const loadJobs = async () => {
@@ -44,42 +44,42 @@ export function Jobs() {
 
   return (
     <section className="space-y-4">
-      <h2 className="text-2xl font-semibold">Jobs</h2>
-      <form onSubmit={onCreate} className="space-y-2 rounded-xl border border-slate-200 p-4">
+      <h2 className="text-2xl font-semibold text-white">Jobs</h2>
+      <form onSubmit={onCreate} className="space-y-2 rounded-xl border border-nf-line bg-nf-panel p-4">
         <input
-          className="w-full rounded-lg border border-slate-300 px-3 py-2"
+          className="w-full rounded-lg border border-nf-line bg-nf-bg px-3 py-2 text-white"
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="Job name"
           required
         />
         <input
-          className="w-full rounded-lg border border-slate-300 px-3 py-2"
+          className="w-full rounded-lg border border-nf-line bg-nf-bg px-3 py-2 text-white"
           value={projectId}
           onChange={(event) => setProjectId(event.target.value)}
           placeholder="Project ID"
           required
         />
         <textarea
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm"
+          className="w-full rounded-lg border border-nf-line bg-nf-bg px-3 py-2 font-mono text-sm text-white"
           rows={6}
           value={payloadText}
           onChange={(event) => setPayloadText(event.target.value)}
         />
-        <button type="submit" className="rounded-lg bg-ink-900 px-4 py-2 text-sm font-semibold text-white">
+        <button type="submit" className="rounded-lg bg-nf-accent px-4 py-2 text-sm font-semibold text-white">
           Create Job
         </button>
       </form>
 
-      {status && <p className="text-sm text-slate-600">{status}</p>}
+      {status && <p className="text-sm text-nf-muted">{status}</p>}
 
       <div className="space-y-2">
         {jobs.map((job) => (
-          <article key={job.id} className="rounded-lg border border-slate-200 p-3">
-            <p className="font-semibold">{job.name}</p>
-            <p className="text-xs text-slate-500">Project: {job.projectId}</p>
-            <p className="text-xs text-slate-500">Status: {job.status}</p>
-            <p className="text-xs text-slate-500">{new Date(job.createdAt).toLocaleString()}</p>
+          <article key={job.id} className="rounded-lg border border-nf-line bg-nf-panel p-3">
+            <p className="font-semibold text-white">{job.name}</p>
+            <p className="text-xs text-nf-muted">Project: {job.projectId}</p>
+            <p className="text-xs text-nf-muted">Status: {job.status}</p>
+            <p className="text-xs text-nf-muted">{new Date(job.createdAt).toLocaleString()}</p>
           </article>
         ))}
       </div>

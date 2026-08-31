@@ -40,6 +40,9 @@ class CloudGateway:
         max_tokens: int = 2048,
     ) -> str | AsyncIterator[str]:
         self._ensure_api_key()
+        if self.provider in {"gemini", "google"}:
+            return await self._gemini_chat(messages, temperature=temperature, max_tokens=max_tokens)
+
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": list(messages),
@@ -56,6 +59,81 @@ class CloudGateway:
         response.raise_for_status()
         body = response.json()
         return str(body.get("choices", [{}])[0].get("message", {}).get("content", ""))
+
+    async def _gemini_chat(
+        self,
+        messages: Sequence[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+    ) -> str:
+        system_parts = [item["content"] for item in messages if item.get("role") == "system" and item.get("content")]
+        contents: list[dict[str, Any]] = []
+        for item in messages:
+            role = item.get("role", "user")
+            if role == "system":
+                continue
+            contents.append(
+                {
+                    "role": "model" if role == "assistant" else "user",
+                    "parts": [{"text": item.get("content", "")}],
+                }
+            )
+        if not contents:
+            raise RuntimeError("Gemini request has no user content.")
+
+        payload: dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+            },
+        }
+        if system_parts:
+            payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
+
+        candidates_models = [self.model, "gemini-2.5-flash", "gemini-1.5-flash", "gemini-pro"]
+        last_error: Exception | None = None
+        endpoints = []
+        for raw_model in candidates_models:
+            model_name = raw_model if raw_model.startswith("models/") else f"models/{raw_model}"
+            endpoints.append((raw_model, f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent"))
+            endpoints.append((raw_model, f"https://aiplatform.googleapis.com/v1/publishers/google/models/{raw_model}:generateContent"))
+        for raw_model, endpoint in endpoints:
+            response = await self._client.post(
+                endpoint,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": str(self.api_key),
+                },
+            )
+            if response.status_code == 404:
+                last_error = RuntimeError(f"Gemini model not found: {raw_model}")
+                continue
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError(self._safe_http_error(exc)) from exc
+            body = response.json()
+            candidates = body.get("candidates", [])
+            parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+            text = "".join(str(part.get("text", "")) for part in parts)
+            if text:
+                self.model = raw_model
+                return text
+            last_error = RuntimeError("Gemini returned an empty response.")
+        raise last_error or RuntimeError("Gemini request failed.")
+
+    @staticmethod
+    def _safe_http_error(exc: httpx.HTTPStatusError) -> str:
+        url = str(exc.request.url.copy_with(query=None))
+        status = exc.response.status_code
+        detail = ""
+        try:
+            detail = str(exc.response.json().get("error", {}).get("message", ""))
+        except Exception:
+            detail = exc.response.text[:180]
+        return f"Gemini HTTP {status} for {url}. {detail}".strip()
 
     async def embeddings(self, text: str, model: str | None = None) -> list[float]:
         self._ensure_api_key()
@@ -100,8 +178,11 @@ class CloudGateway:
             )
 
     def _headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        if self.provider in {"gemini", "google"}:
+            headers["x-goog-api-key"] = str(self.api_key)
+        return headers
 

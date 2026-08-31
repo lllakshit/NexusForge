@@ -3,13 +3,20 @@
 @tailwind utilities;
 
 :root {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: Inter, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top left, #d9f4ef 0%, #f8fafc 45%, #ffffff 100%);
-  color: #102a43;
+  background: #0b0e14;
+  color: #e8eef9;
 }
 
 * {

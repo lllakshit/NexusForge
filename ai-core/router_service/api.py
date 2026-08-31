@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+import time
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from orchestrator.orchestrator import TaskOrchestrator
-from router_service.models import ExecuteRequest, ExecuteResponse, RouteDecision, RouteRequest
+from router_service.models import ChatRequest, ChatResponse, ExecuteRequest, ExecuteResponse, RouteDecision, RouteRequest
 from router_service.router import RouterEngine
+from usage_stats import record_error, record_success
 
 router = APIRouter(tags=["ai-core"])
 
@@ -31,4 +34,30 @@ async def execute_task(
     orchestrator: TaskOrchestrator = Depends(get_orchestrator),
 ) -> ExecuteResponse:
     return await orchestrator.submit(payload)
+
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat(
+    payload: ChatRequest,
+    router_engine: RouterEngine = Depends(get_router_engine),
+) -> ChatResponse:
+    messages: list[dict[str, str]] = []
+    if payload.system_prompt:
+        messages.append({"role": "system", "content": payload.system_prompt})
+    messages.append({"role": "user", "content": payload.prompt})
+    started = time.perf_counter()
+    try:
+        output = await router_engine.invoke_model("cloud", messages=messages)
+        cloud = router_engine.cloud_gateway
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        record_success("chat", cloud.model, latency_ms, tokens=max(1, len(payload.prompt.split()) + len(str(output).split())))
+        return ChatResponse(
+            provider=cloud.provider,
+            model=cloud.model,
+            output=str(output),
+        )
+    except Exception as exc:
+        message = str(exc)
+        record_error("chat", message.split("key=")[0])
+        raise HTTPException(status_code=502, detail=message.split("key=")[0]) from exc
 

@@ -28,7 +28,12 @@ class EventSubscriber:
             return
 
         self.nc = NATS()
-        await self.nc.connect(servers=[self.settings.nats_url])
+        try:
+            await self.nc.connect(servers=[self.settings.nats_url])
+        except Exception as exc:
+            logger.warning("NATS unavailable; AI Core will run without events: %s", exc)
+            self.nc = None
+            return
         self._connected = True
 
         for subject in self.settings.subjects:
